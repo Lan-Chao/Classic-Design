@@ -1,0 +1,79 @@
+
+
+1.所有分析器应用注册到ZK注册中心
+@Bean
+public ZkLifeCycle zkLifeCycle() {
+  return new ZkLifeCycle();
+}
+/**
+ * ZK注册
+ * 监听Spring的生命周期，在上下文刷新完成后，执行ZK客户端的注册
+ */
+public static class ZkLifeCycle implements ApplicationListener<ContextRefreshedEvent> {
+     @Override
+     public void onApplicationEvent(ContextRefreshedEvent event) {
+         ApplicationContext context = event.getApplicationContext();
+         ZkClient zkClient = context.getBean(ZkClient.class);
+         zkClient.register();
+     }
+}
+
+2. 每个分析器应用在启动的时候，通过ZK的客户端缓存分析器应用列表 
+
+client.getConnectionStateListenable().addListener((curatorFramework, newState) -> {
+     // 第一次连接或者重新连接的时候，初始化实例列表
+     if (ConnectionState.CONNECTED.equals(newState) || ConnectionState.RECONNECTED.equals(newState)) {
+         List<String> instances = getInstances();
+         instances.forEach(nodeHolder::addPhyNode);
+     }
+});
+
+3.监听ZK的节点变更事件
+// 对于节点增加默认监听器
+PathChildrenCache watcher = new PathChildrenCache(client, rootPath, true, false, executorService);
+watcher.getListenable().addListener((curatorFramework, pathChildrenCacheEvent) -> {
+     switch (pathChildrenCacheEvent.getType()) {
+         case CHILD_ADDED:
+             // 节点增加
+             nodeHolder.addPhyNode(getNodePath(pathChildrenCacheEvent.getData().getPath()));
+             break;
+         case CHILD_REMOVED:
+             // 节点删除
+             nodeHolder.delPhyNode(getNodePath(pathChildrenCacheEvent.getData().getPath()));
+             break;
+         default:
+             break;
+         }
+    });
+try {
+    watcher.start();
+} catch (Exception e) {
+    log.error("子节点状态监听器启动失败: {}", e.getMessage());
+}
+//只有当其他客户端被删除或者增加的时候，才会触发节点持有容器的增加物理节点和删除物理节点操作。
+
+
+4.获取对象key的hash值，根据hash值比较获取虚拟节点
+VirtualServerNode node = nodeHolder.getServerNode(houseId);
+// 想要处理的数据被划分到当前物理节点的虚拟节点，则加入处理列表
+if (node != null && StringUtils.contains(node.getServerNode(), getCurrentServerName())) {
+   list.add(ziruHostingHouseMetadata);
+}
+
+
+5.这里需要额外说明Hash的算法采用，MurmurHash3的具体算法。这种算法相对于其他hash算法，更均匀且效率上更高。
+Java计算出的Murmurhash3是两个64bit的long数值，这里通过BigInteger来进行相加计算，并做两两比较：
+
+public static int compareTo(MurmurHash3.HashValue v1, MurmurHash3.HashValue v2) {
+     BigInteger one = BigInteger.valueOf(v1.val1).add(BigInteger.valueOf(v1.val2));
+     BigInteger another = BigInteger.valueOf(v2.val1).add(BigInteger.valueOf(v2.val2));
+     return one.compareTo(another);
+}
+
+
+
+
+
+
+
+
