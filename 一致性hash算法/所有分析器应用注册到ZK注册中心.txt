@@ -1,0 +1,34 @@
+
+
+@Bean
+public ZkLifeCycle zkLifeCycle() {
+ return new ZkLifeCycle();
+}
+
+
+1.所有分析器应用注册到ZK注册中心
+/**
+ * ZK注册
+ * 
+ * 监听Spring的生命周期，在上下文刷新完成后，执行ZK客户端的注册
+ */
+public static class ZkLifeCycle implements ApplicationListener<ContextRefreshedEvent> {
+ @Override
+ public void onApplicationEvent(ContextRefreshedEvent event) {
+ ApplicationContext context = event.getApplicationContext();
+ ZkClient zkClient = context.getBean(ZkClient.class);
+ zkClient.register();
+ }
+}
+
+
+2. 每个分析器应用在启动的时候，通过ZK的客户端缓存分析器应用列表 
+
+client.getConnectionStateListenable().addListener((curatorFramework, newState) -> {
+ // 第一次连接或者重新连接的时候，初始化实例列表
+ if (ConnectionState.CONNECTED.equals(newState)
+ || ConnectionState.RECONNECTED.equals(newState)) {
+ List<String> instances = getInstances();
+ instances.forEach(nodeHolder::addPhyNode);
+ }
+});
