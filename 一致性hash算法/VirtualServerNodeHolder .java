@@ -60,7 +60,7 @@ public class VirtualServerNodeHolder {
          }
          // 完成所有节点删除后，删除名字
          names.remove(serverName);
-         }
+     }
       @Nullable
       public synchronized VirtualServerNode getServerNode(String key) {
          if (nodes.isEmpty()) {
